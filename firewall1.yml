@@ -1,0 +1,117 @@
+---
+- hosts: localhost
+  connection: local
+  become: yes
+  gather_facts: no
+  # vars:
+  #   network_connections:
+  #   - name: eth1
+  #     state: up
+  #     type: ethernet
+  #     interface_name: eth1
+  #     autoconnect: yes
+  #     ip:
+  #       dhcp4: yes
+  #       auto6: no
+  tasks:
+  - name: Installing apache webserver and firewalld
+    yum:
+      name: "{{ item }}"
+      state: present
+    loop:
+    #- apache2
+    - firewalld
+    #- libsemanage
+    - policycoreutils
+
+  - name: Start firewalld
+    service:
+      name: "{{ item }}"
+      state: started
+      enabled: yes
+    loop:
+    #- apache2
+    - firewalld
+    # notify:
+    # - restart firewalld
+  # - name: Display Hello World
+  #   template:
+  #     src: index.html.j2
+  #     dest: /var/www/html/index.html
+      
+  - name: enabling http and https service
+    firewalld:
+      service: "{{ item }}"
+      permanent: yes
+      state: enabled
+    loop:
+    - http
+    - https
+  - file: 
+      path: /webdev
+      mode: '2775'
+      state: directory
+      setype: httpd_sys_content_t
+  - copy: 
+      content: 'Hello World!'
+      dest: /webdev/index.html
+  
+  # - sefcontext:
+  #     setype: httpd_sys_content_t
+  #     target: '/webdev(/.*)?'
+  #     state: present
+  - command: restorecon -irv /webdev
+  - file:
+      src: /webdev
+      dest: /var/www/html/webdev
+      state: link
+
+  - name: Enabling and disabling multiple ports on different zones 
+    firewalld:
+      permanent: yes
+      immediate: yes
+      port: "{{item.port}}/{{item.proto}}"
+      state: "{{item.state}}"
+      zone: "{{item.zone}}" 
+    loop:
+    - { port: "80", proto: "tcp", state: "enabled", zone: "dmz" }
+    - { port: "443", proto: "tcp", state: "enabled", zone: "internal" }
+    - { port: "1443", proto: "tcp", state: "disabled", zone: "public" } 
+
+  - name: Using Rich Rule with Ansible FirewallD
+    firewalld:
+      zone: internal
+      rich_rule: "{{ item }}"
+      permanent: yes
+      immediate: yes
+      state: enabled
+    loop:
+    - 'rule service name="ftp" audit limit value="1/m" accept'
+    - 'rule service name="http" audit limit value="1/m" drop'
+
+  - name: Redirect port 80 to 443 with Rich Rule
+    firewalld:
+      rich_rule: rule family=ipv4 forward-port port=80 protocol=tcp to-port=8443
+      zone: public
+      permanent: yes
+      state: enabled
+  - name: Allow and deny IP address
+    firewalld:
+      rich_rule: "{{ item }}"
+      permanent: yes
+      state: enabled
+    loop:
+    - 'rule family="ipv4" source address="127.0.0.1" accept'
+    - 'rule family="ipv4" source address="127.0.0.1" reject'
+
+  # - name: Stop firewall
+  #   service:
+  #     name: firewalld
+  #     state: stopped
+
+  # handlers:
+  # - name: restart firewalld
+  #   service:
+  #     name: firewalld
+  #     state: restarted
+  #     enabled: yes
